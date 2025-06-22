@@ -7,7 +7,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Gold is ERC20, Ownable {
     constructor() ERC20("Gold", "GLD") Ownable(msg.sender) {
-        _mint(msg.sender, 100);
+        _mint(msg.sender, 1000);
     }
 
     function mint(address to, uint256 amount) public onlyOwner {
@@ -17,7 +17,7 @@ contract Gold is ERC20, Ownable {
 
 contract Silver is ERC20, Ownable {
     constructor() ERC20("Silver", "SLV") Ownable(msg.sender) {
-        _mint(msg.sender, 100);
+        _mint(msg.sender, 1000);
     }
 
     function mint(address to, uint256 amount) public onlyOwner {
@@ -55,33 +55,43 @@ interface ISimpleSwap {
         uint deadline
     ) external returns (uint[] memory amounts);
 
-    function getPrice(address tokenA, address tokenB) external view returns (uint price);
+    function getPrice(
+        address tokenA, 
+        address tokenB
+    ) external view returns (uint price);
 
-    function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) external pure returns (uint amountOut);
+    function getAmountOut(
+        uint amountIn, 
+        uint reserveIn, 
+        uint reserveOut
+    ) external pure returns (uint amountOut);
 }
 
 contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
 
-    Gold public goldToken;
-    Silver public silverToken;
+    Gold private goldToken;
+    Silver private silverToken;
 
     uint public reserveGold;
     uint public reserveSilver;
     mapping(address => uint) public liquidities;
 
-    constructor(address _goldToken, address _silverToken) ERC20("GoldSilverLP", "GST") Ownable(msg.sender) {
+    constructor(address _goldToken, address _silverToken) ERC20("GoldSilverLP", "GSLP") Ownable(msg.sender) {
         goldToken = Gold(_goldToken);
         silverToken = Silver(_silverToken);
 
         reserveGold = goldToken.balanceOf(address(owner()));
         reserveSilver = silverToken.balanceOf(address(owner()));
 
-        uint amountToMint = (reserveGold + reserveSilver) * 10 ** decimals();
-        _mint(address(owner()), amountToMint);
-        liquidities[address(owner())] = amountToMint;
+        _mint(address(owner()), reserveGold + reserveSilver);
+        liquidities[address(owner())] = reserveGold + reserveSilver;
     }
 
-    // We assume that the pool has an initial liquidity
+    /* 
+    * Function to add liquidity to the swap contract. 
+    *
+    * The pool has an initial liquidity provided by the owner.
+    */
     function addLiquidity(
         address goldAddress, 
         address silverAddress,
@@ -92,30 +102,50 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         address to, 
         uint deadline
     ) external returns (uint amountGold, uint amountSilver, uint liquidity) {
+        // Verifies if the transaction is not expired
         require(block.timestamp <= deadline, "Transaction expired");
-
-        uint amountSilverOptimal = (amountGoldDesired * reserveSilver) / reserveGold;
-        if (amountSilverOptimal <= amountSilverDesired) {
-            require(amountSilverOptimal >= amountSilverMin, "Insufficient Silver amount");
+        
+        /*
+        * Calculates amount of silver that correspond for the amount of gold desired.
+        *
+        * If amount of silver desired is greater than the silver amount calculated 
+		* and this silver amount caluclated is greater than the minimun set by the sender then
+        * gold desired is setted as final amount.
+        */
+        uint amountSilverFinal = (amountGoldDesired * reserveSilver) / reserveGold;
+        if (amountSilverFinal <= amountSilverDesired) {
+            require(amountSilverFinal >= amountSilverMin, "Insufficient Silver amount");
             amountGold = amountGoldDesired;
-            amountSilver = amountSilverOptimal;
+            amountSilver = amountSilverFinal;
         } else {
-            uint amountGoldOptimal = (amountSilverDesired * reserveGold) / reserveSilver;
-            require(amountGoldOptimal <= amountGoldDesired, "Insufficient Gold amount");
-            require(amountGoldOptimal >= amountGoldMin, "Insufficient Gold amount");
-            amountGold = amountGoldOptimal;
+            /*
+            * If amount of silver desired was NOT greater than the silver amount calculated, 
+            * it calculates amount of gold that correspond for the amount of silver desired.
+            * If amount of gold desired is greater than the gold amount calculated 
+            * and this gold amount caluclated is greater than the minimun set by the sender then
+            * silver desired is setted as final amount.
+            */
+            uint amountGoldFinal = (amountSilverDesired * reserveGold) / reserveSilver;
+
+            require(amountGoldFinal <= amountGoldDesired, "Insufficient Gold amount");
+            require(amountGoldFinal >= amountGoldMin, "Insufficient Gold amount");
+            amountGold = amountGoldFinal;
             amountSilver = amountSilverDesired;
         }
 
+        // Transfers tokens from the user to the contract
         require(Gold(goldAddress).transferFrom(msg.sender, address(this), amountGold), "Gold transaction failed");
         require(Silver(silverAddress).transferFrom(msg.sender, address(this), amountSilver), "Silver transaction failed");
 
+        // Calculate the liquidity
         liquidity = min(amountGold / reserveGold, amountSilver / reserveSilver) * totalSupply();
 
+        // If liquidity is grater than zero then is minted in contract and asigned to the user
         require(liquidity > 0, "Insufficient liquidity minted");
         _mint(to, liquidity);
         liquidities[to] += liquidity;
 
+        // Reserve tokens values are updated
         reserveGold += amountGold;
         reserveSilver += amountSilver;
 
@@ -131,8 +161,10 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         address to, 
         uint deadline
     ) external returns (uint amountGold, uint amountSilver) {
+        // Verifies if the transaction is not expired
         require(block.timestamp <= deadline, "Transaction expired");
 
+        // Verifies if user has enough liquidity
         require(liquidities[msg.sender] >= liquidity, "Insufficient liquidity");
 
         amountGold = (liquidity * reserveGold) / totalSupply();
@@ -163,6 +195,7 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         address to,
         uint deadline
     ) external returns (uint[] memory amounts) {
+        // Verifies if the transaction is not expired
         require(block.timestamp <= deadline, "Transaction expired");
 
         uint goldBalance = goldToken.balanceOf(address(this));
@@ -216,75 +249,11 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
     }
 
     function _getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) private pure returns (uint) {
-        require(amountIn > 0 && reserveIn > 0 && reserveOut > 0, "Invalid reserves or amountIn");
+        require(amountIn > 0 && reserveIn > 0 && reserveOut > 0, "Invalid reserves or amount");
         return (amountIn * reserveOut) / (reserveIn + amountIn);
     }
 
     function min(uint a, uint b) internal pure returns (uint) {
         return a < b ? a : b;
-    }
-}
-
-/**
- * @title SwapVerifier
- * @notice Verifies a SimpleSwap implementation by exercising its functions and asserting correct behavior.
- */
-contract SwapVerifier {
-
-    string[] public authors;
-
-    /// @notice Runs end-to-end checks on a deployed SimpleSwap contract.
-    /// @param swapContract Address of the SimpleSwap contract to verify.
-    /// @param tokenA Address of a test ERC20 token (must implement IMintableERC20).
-    /// @param tokenB Address of a test ERC20 token (must implement IMintableERC20).
-    /// @param amountA Initial amount of tokenA to mint and add as liquidity.
-    /// @param amountB Initial amount of tokenB to mint and add as liquidity.
-    /// @param amountIn Amount of tokenA to swap for tokenB.
-    /// @param author Name of the author of swap contract
-    function verify(
-        address swapContract,
-        address tokenA,
-        address tokenB,
-        uint256 amountA,
-        uint256 amountB,
-        uint256 amountIn,
-        string memory author
-    ) external {
-        require(amountA > 0 && amountB > 0, "Invalid liquidity amounts");
-        require(amountIn > 0 && amountIn <= amountA, "Invalid swap amount");
-        require(IERC20(tokenA).balanceOf(address(this)) >= amountA, "Insufficient token A supply for this contact");
-        require(IERC20(tokenB).balanceOf(address(this)) >= amountB, "Insufficient token B supply for this contact");
-
-        // Approve SimpleSwap to transfer tokens
-        IERC20(tokenA).approve(swapContract, amountA);
-        IERC20(tokenB).approve(swapContract, amountB);
-
-        // Add liquidity
-        (uint256 aAdded, uint256 bAdded, uint256 liquidity) = ISimpleSwap(swapContract)
-            .addLiquidity(tokenA, tokenB, amountA, amountB, amountA, amountB, address(this), block.timestamp + 1);
-        require(aAdded == amountA && bAdded == amountB, "addLiquidity amounts mismatch");
-        require(liquidity > 0, "addLiquidity returned zero liquidity");
-
-        // Check price = bAdded * 1e18 / aAdded
-        uint256 price = ISimpleSwap(swapContract).getPrice(tokenA, tokenB);
-        require(price == (bAdded * 1e18) / aAdded, "getPrice incorrect");
-
-        // Compute expected output for swap
-        uint256 expectedOut = ISimpleSwap(swapContract).getAmountOut(amountIn, aAdded, bAdded);
-        // Perform swap
-        IERC20(tokenA).approve(swapContract, amountIn);
-        address[] memory path = new address[](2);
-        path[0] = tokenA;
-        path[1] = tokenB;
-        ISimpleSwap(swapContract).swapExactTokensForTokens(amountIn, expectedOut, path, address(this), block.timestamp + 1);
-        require(IERC20(tokenB).balanceOf(address(this)) >= expectedOut, "swapExactTokensForTokens failed");
-
-        // Remove liquidity
-        (uint256 aOut, uint256 bOut) = ISimpleSwap(swapContract)
-            .removeLiquidity(tokenA, tokenB, liquidity, 0, 0, address(this), block.timestamp + 1);
-        require(aOut + bOut > 0, "removeLiquidity returned zero tokens");
-
-        // Add author
-        authors.push(author);
     }
 }
