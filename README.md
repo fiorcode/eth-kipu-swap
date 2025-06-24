@@ -24,7 +24,7 @@ The main contract that supports:
 
 ## 🔧 Features
 
-### `addLiquidity(...)`
+### `addLiquidity`
 
 Adds liquidity to the token pool.
 
@@ -38,13 +38,13 @@ Adds liquidity to the token pool.
 
 ---
 
-### `removeLiquidity(...)`
+### `removeLiquidity`
 
 Allows a liquidity provider to withdraw their share from the pool.
 
 ---
 
-### `swapExactTokensForTokens(...)`
+### `swapExactTokensForTokens`
 
 Swaps an exact amount of one token for the maximum possible amount of another.
 
