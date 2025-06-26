@@ -152,6 +152,22 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         return (amountGold, amountSilver, liquidity);
     }
 
+/**
+ * @notice Removes liquidity from the pool and returns corresponding amounts of gold and silver tokens
+ * @dev Calculates user's share of reserves based on the provided liquidity amount. Burns LP tokens
+ *      and transfers proportional amounts of `gold` and `silver` tokens back to the user.
+ *
+ * @param goldAddress       The address of the gold token (ERC20)
+ * @param silverAddress     The address of the silver token (ERC20)
+ * @param liquidity         The amount of LP tokens to burn (liquidity being withdrawn)
+ * @param amountGoldMin     The minimum acceptable amount of gold tokens to receive (slippage protection)
+ * @param amountSilverMin   The minimum acceptable amount of silver tokens to receive (slippage protection)
+ * @param to                The recipient address that will receive the underlying tokens
+ * @param deadline          Timestamp after which the transaction will be rejected to prevent stale execution
+ *
+ * @return amountGold       The actual amount of gold tokens returned to the user
+ * @return amountSilver     The actual amount of silver tokens returned to the user
+ */
     function removeLiquidity(
         address goldAddress, 
         address silverAddress,
@@ -188,6 +204,20 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         return (amountGold, amountSilver);
     }
 
+    
+    /**
+    * @notice Swaps an exact amount of one token for another using internal reserves
+    * @dev This implementation assumes the contract manages two fixed ERC20 tokens: `goldToken` and `silverToken`.
+    *      It determines which token is being swapped in by comparing pre- and post-transfer balances.
+    *
+    * @param amountIn       The exact amount of input tokens to swap
+    * @param amountOutMin   The minimum amount of output tokens the user is willing to accept (for slippage protection)
+    * @param path           An array of token addresses specifying the swap route. Only path[0] is used to detect input token.
+    * @param to             The recipient address to receive the output tokens
+    * @param deadline       A timestamp after which the transaction will be rejected to prevent stale execution
+    *
+    * @return amounts       A placeholder array sized by `amountOut` (⚠ may be a bug; see comment below)
+    */
     function swapExactTokensForTokens(
         uint amountIn,
         uint amountOutMin,
@@ -204,15 +234,18 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         // Transfer the input tokens to contract
         require(IERC20(path[0]).transferFrom(msg.sender, address(this), amountIn), "Transfer failed");
 
+	// Determine which token's balance increased to identify the input token
         bool glodReserveIncrease = goldBalance < goldToken.balanceOf(address(this));
         bool silverReserveIncrease = silverBalance < silverToken.balanceOf(address(this));
 
+	// Ensure a valid token was actually transferred
         require(glodReserveIncrease || silverReserveIncrease, "Not valid tokens received");
 
         uint reserveIn;
         IERC20 tokenOut;
         uint reserveOut;
 
+	// Set correct reserves and output token based on which token was received
         if (glodReserveIncrease) {
             reserveIn = reserveGold;
             tokenOut = silverToken;
@@ -223,14 +256,17 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
             reserveOut = reserveGold;
         }
 
+	// Use constant product formula to calculate how much output can be given
         uint amountOut = _getAmountOut(amountIn, reserveIn, reserveOut);
 
+	// Validate the output is acceptable
         require(amountOut > 0, "Insufficient output amount");
-
         require(amountOut >= amountOutMin, "Slippage: insufficient output");
-        
+
+	// Transfer output tokens to the destination address
         require(tokenOut.transfer(to, amountOut), "Output transfer failed");
 
+	// Update internal reserves to reflect new pool state
         reserveGold = goldToken.balanceOf(address(this));
         reserveSilver = silverToken.balanceOf(address(this));
 
