@@ -11,10 +11,12 @@ A sample smart contract written in Solidity that enables swapping between two ER
 
 Basic ERC20 tokens based on OpenZeppelin with `mint` functionality restricted to the contract owner.
 
-- `Gold`: Symbol `GLD`
-- `Silver`: Symbol `SLV`
+- `Gold`: Symbol `GLD` Address `0xf1308ca639beb5b99f4a29706f7dd378ae5f2f41`
+- `Silver`: Symbol `SLV` Address `0xed6a85df1a5bf0a268be336faf1bfd7c337471be`
 
 ### `SimpleSwap`
+
+- Address `0xe733BD859378DDDE3Cd6b3529cda042287992d72`
 
 The main contract that supports:
 
