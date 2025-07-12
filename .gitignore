@@ -13,3 +13,11 @@ states/
 # Optional
 .env
 .env.local
+node_modules
+
+# Hardhat cache
+**/cache/**
+
+# Coverage
+coverage/
+coverage.json

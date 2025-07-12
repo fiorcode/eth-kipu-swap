@@ -1,0 +1,30 @@
+{
+  "name": "eth-kipu-swap",
+  "version": "1.0.0",
+  "description": "Trabajo practico 4",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fiorcode/eth-kipu-swap.git"
+  },
+  "author": "Leoanrdo Perez Fiorentino",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/fiorcode/eth-kipu-swap/issues"
+  },
+  "homepage": "https://github.com/fiorcode/eth-kipu-swap#readme",
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.3.0",
+    "ethers": "^6.15.0",
+    "express": "^5.1.0"
+  },
+  "keywords": [],
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.0.0",
+    "hardhat": "^2.25.0"
+  }
+}
