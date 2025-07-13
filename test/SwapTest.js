@@ -16,17 +16,18 @@ describe("Swap contract", function () {
     return { simpleSwap, gold, silver, owner, addr1, addr2 };
   }
 
-  it("Should set the right owner", async function () {
+  it("Initial GSLP balance of the owner should be 2000", async function () {
     const { simpleSwap, owner } = await loadFixture(deployTokenFixture);
-    expect(await simpleSwap.balanceOf(owner.address)).to.equal(2000n);  // Use BigInt
+
+    expect(await simpleSwap.balanceOf(owner.address)).to.equal(2000n);
   });
 
-  it("owner initial balance of gold should be 1000", async function () {
+  it("Owner initial balance of Gold should be 1000", async function () {
     const { owner, gold } = await loadFixture(deployTokenFixture);
     expect(await gold.balanceOf(owner.address)).to.equal(1000n);
   });
 
-  it("owner initial balance of silver should be 1000", async function () {
+  it("owner initial balance of Silver should be 1000", async function () {
     const { owner, silver } = await loadFixture(deployTokenFixture);
     expect(await silver.balanceOf(owner.address)).to.equal(1000n);
   });
