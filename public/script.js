@@ -114,7 +114,7 @@ async function setBalanceSilver() {
 }
 
 async function allowance() {
-  goldInstance = new web3.eth.Contract(gold_abi, gold_address);
+  goldInstance = new web3.eth.Contract(silver_abi, silver_address);
   const allowed = await goldInstance.methods.allowance(address,exchange_address).call();
   buyOrApprove = allowed;
 }

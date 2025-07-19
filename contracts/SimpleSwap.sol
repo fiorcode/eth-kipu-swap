@@ -5,22 +5,18 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
-contract Gold is ERC20, Ownable {
-    constructor() ERC20("Gold", "GLD") Ownable(msg.sender) {
-        _mint(msg.sender, 1000);
-    }
+contract Gold is ERC20 {
+    constructor() ERC20("Gold", "GLD") {}
 
-    function mint(address to, uint256 amount) public onlyOwner {
+    function mint(address to, uint256 amount) public {
         _mint(to, amount);
     }
 }
 
-contract Silver is ERC20, Ownable {
-    constructor() ERC20("Silver", "SLV") Ownable(msg.sender) {
-        _mint(msg.sender, 1000);
-    }
+contract Silver is ERC20 {
+    constructor() ERC20("Silver", "SLV") {}
 
-    function mint(address to, uint256 amount) public onlyOwner {
+    function mint(address to, uint256 amount) public {
         _mint(to, amount);
     }
 }
@@ -79,12 +75,11 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
     constructor(address _goldToken, address _silverToken) ERC20("GoldSilverLP", "GSLP") Ownable(msg.sender) {
         goldToken = Gold(_goldToken);
         silverToken = Silver(_silverToken);
-
-        reserveGold = goldToken.balanceOf(address(owner()));
-        reserveSilver = silverToken.balanceOf(address(owner()));
-
-        _mint(address(owner()), reserveGold + reserveSilver);
-        liquidities[address(owner())] = reserveGold + reserveSilver;
+        goldToken.mint(address(this), 1000);
+        silverToken.mint(address(this), 10000);
+        reserveGold = 1000;
+        reserveSilver = 10000;
+        _mint(address(this), 1 ether);
     }
 
     /* 
@@ -134,11 +129,12 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         }
 
         // Transfers tokens from the user to the contract
-        require(Gold(goldAddress).transferFrom(msg.sender, address(this), amountGold), "Gold transaction failed");
-        require(Silver(silverAddress).transferFrom(msg.sender, address(this), amountSilver), "Silver transaction failed");
+        require(goldToken.transferFrom(msg.sender, address(this), amountGold), "Gold transaction failed");
+        require(silverToken.transferFrom(msg.sender, address(this), amountSilver), "Silver transaction failed");
 
         // Calculate the liquidity
-        liquidity = min(amountGold / reserveGold, amountSilver / reserveSilver) * totalSupply();
+        uint256 totalSupply = totalSupply();
+        liquidity = min((amountGold * totalSupply) / reserveGold, (amountSilver * totalSupply) / reserveSilver);
 
         // If liquidity is grater than zero then is minted in contract and asigned to the user
         require(liquidity > 0, "Insufficient liquidity minted");
@@ -152,22 +148,22 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         return (amountGold, amountSilver, liquidity);
     }
 
-/**
- * @notice Removes liquidity from the pool and returns corresponding amounts of gold and silver tokens
- * @dev Calculates user's share of reserves based on the provided liquidity amount. Burns LP tokens
- *      and transfers proportional amounts of `gold` and `silver` tokens back to the user.
- *
- * @param goldAddress       The address of the gold token (ERC20)
- * @param silverAddress     The address of the silver token (ERC20)
- * @param liquidity         The amount of LP tokens to burn (liquidity being withdrawn)
- * @param amountGoldMin     The minimum acceptable amount of gold tokens to receive (slippage protection)
- * @param amountSilverMin   The minimum acceptable amount of silver tokens to receive (slippage protection)
- * @param to                The recipient address that will receive the underlying tokens
- * @param deadline          Timestamp after which the transaction will be rejected to prevent stale execution
- *
- * @return amountGold       The actual amount of gold tokens returned to the user
- * @return amountSilver     The actual amount of silver tokens returned to the user
- */
+    /**
+    * @notice Removes liquidity from the pool and returns corresponding amounts of gold and silver tokens
+    * @dev Calculates user's share of reserves based on the provided liquidity amount. Burns LP tokens
+    *      and transfers proportional amounts of `gold` and `silver` tokens back to the user.
+    *
+    * @param goldAddress       The address of the gold token (ERC20)
+    * @param silverAddress     The address of the silver token (ERC20)
+    * @param liquidity         The amount of LP tokens to burn (liquidity being withdrawn)
+    * @param amountGoldMin     The minimum acceptable amount of gold tokens to receive (slippage protection)
+    * @param amountSilverMin   The minimum acceptable amount of silver tokens to receive (slippage protection)
+    * @param to                The recipient address that will receive the underlying tokens
+    * @param deadline          Timestamp after which the transaction will be rejected to prevent stale execution
+    *
+    * @return amountGold       The actual amount of gold tokens returned to the user
+    * @return amountSilver     The actual amount of silver tokens returned to the user
+    */
     function removeLiquidity(
         address goldAddress, 
         address silverAddress,
@@ -198,8 +194,8 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         reserveSilver -= amountSilver;
 
         // Transfer tokens to user
-        require(Gold(goldAddress).transfer(to, amountGold), "Gold transaction failed");
-        require(Silver(silverAddress).transfer(to, amountSilver), "Silver transaction failed");
+        require(goldToken.transfer(to, amountGold), "Gold transaction failed");
+        require(silverToken.transfer(to, amountSilver), "Silver transaction failed");
 
         return (amountGold, amountSilver);
     }
@@ -293,3 +289,4 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         return a < b ? a : b;
     }
 }
+
