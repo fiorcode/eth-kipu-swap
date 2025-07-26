@@ -208,6 +208,8 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         /// Ensure the transaction hasn't expired
         require(block.timestamp <= deadline, "Transaction expired");
 
+        address _thisAddress = address(this);
+
         // Calculate the optimal amount of Silver to match Gold at pool ratio
         uint amountSilverFinal = (amountGoldDesired * reserveSilver) / reserveGold;
 
@@ -225,9 +227,11 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
             amountSilver = amountSilverDesired;
         }
 
+        address _msgSender = msg.sender;
+
         // Transfer tokens from user to pool
-        require(goldToken.transferFrom(msg.sender, address(this), amountGold), "Gold transaction failed");
-        require(silverToken.transferFrom(msg.sender, address(this), amountSilver), "Silver transaction failed");
+        require(goldToken.transferFrom(_msgSender, _thisAddress, amountGold), "Gold transaction failed");
+        require(silverToken.transferFrom(_msgSender, _thisAddress, amountSilver), "Silver transaction failed");
 
         // Calculate LP tokens to mint based on contribution proportion
         uint256 totalSupply = totalSupply();
@@ -245,6 +249,9 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         // Update internal reserves
         reserveGold += amountGold;
         reserveSilver += amountSilver;
+
+        // Emit event for liquidity addition
+        emit LiquidityAdded(_msgSender, to, amountGold, amountSilver, liquidity);
 
         return (amountGold, amountSilver, liquidity);
     }
@@ -274,8 +281,10 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         /// Ensure the transaction hasn't expired
         require(block.timestamp <= deadline, "Transaction expired");
 
+        address _msgSender = msg.sender;
+
         /// Verify the sender has enough LP tokens to burn
-        require(liquidities[msg.sender] >= liquidity, "Insufficient liquidity");
+        require(liquidities[_msgSender] >= liquidity, "Insufficient liquidity");
 
         // Calculate how much Gold and Silver corresponds to the LP tokens
         uint256 totalSupply = totalSupply();
@@ -287,8 +296,8 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         require(amountSilver >= amountSilverMin, "Silver less than minimum");
 
         // Update user’s liquidity balance and burn LP tokens
-        liquidities[msg.sender] -= liquidity;
-        _burn(msg.sender, liquidity);
+        liquidities[_msgSender] -= liquidity;
+        _burn(_msgSender, liquidity);
 
         // Update pool reserves
         reserveGold -= amountGold;
@@ -297,6 +306,9 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         // Transfer the underlying tokens to the user
         require(goldToken.transfer(to, amountGold), "Gold transaction failed");
         require(silverToken.transfer(to, amountSilver), "Silver transaction failed");
+
+        // Emit event for liquidity removal
+        emit LiquidityRemoved(_msgSender, to, amountGold, amountSilver, liquidity);
 
         return (amountGold, amountSilver);
     }
@@ -320,50 +332,60 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
         /// Ensure the swap is executed before the deadline
         require(block.timestamp <= deadline, "Transaction expired");
 
+        address _thisAddress = address(this);
+
         // Get current reserves to detect balance changes
-        uint goldBalance = goldToken.balanceOf(address(this));
-        uint silverBalance = silverToken.balanceOf(address(this));
+        uint goldBalance = goldToken.balanceOf(_thisAddress);
+        uint silverBalance = silverToken.balanceOf(_thisAddress);
+
+        address _msgSender = msg.sender;
+
+        IERC20 _tokenIn = IERC20(path[0]);
 
         // Transfer input tokens to this contract
-        require(IERC20(path[0]).transferFrom(msg.sender, address(this), amountIn), "Transfer failed");
+        require(_tokenIn.transferFrom(_msgSender, _thisAddress, amountIn), "Transfer failed");
 
         // Determine which reserve increased to infer the direction of the swap
-        bool glodReserveIncrease = goldBalance < goldToken.balanceOf(address(this));
-        bool silverReserveIncrease = silverBalance < silverToken.balanceOf(address(this));
+        bool glodReserveIncrease = goldBalance < goldToken.balanceOf(_thisAddress);
+        bool silverReserveIncrease = silverBalance < silverToken.balanceOf(_thisAddress);
 
         // Validate that one of the supported tokens was received
         require(glodReserveIncrease || silverReserveIncrease, "Not valid tokens received");
 
-        uint reserveIn;
-        IERC20 tokenOut;
-        uint reserveOut;
+        uint _reserveIn;
+        uint _reserveOut;
+        IERC20 _tokenOut;
 
         // Identify input/output tokens and reserves based on which reserve increased
         if (glodReserveIncrease) {
-            reserveIn = reserveGold;
-            tokenOut = silverToken;
-            reserveOut = reserveSilver;
+            _reserveIn = reserveGold;
+            _tokenOut = silverToken;
+            _reserveOut = reserveSilver;
         } else {
-            reserveIn = reserveSilver;
-            tokenOut = goldToken;
-            reserveOut = reserveGold;
+            _reserveIn = reserveSilver;
+            _tokenOut = goldToken;
+            _reserveOut = reserveGold;
         }
 
         // Calculate output amount using AMM formula
-        uint amountOut = _getAmountOut(amountIn, reserveIn, reserveOut);
+        uint amountOut = _getAmountOut(amountIn, _reserveIn, _reserveOut);
 
         // Ensure amount is valid and meets slippage requirements
         require(amountOut > 0, "Insufficient output amount");
         require(amountOut >= amountOutMin, "Slippage: insufficient output");
 
         // Transfer output tokens to recipient
-        require(tokenOut.transfer(to, amountOut), "Output transfer failed");
+        require(_tokenOut.transfer(to, amountOut), "Output transfer failed");
 
         // Update internal reserves
-        reserveGold = goldToken.balanceOf(address(this));
-        reserveSilver = silverToken.balanceOf(address(this));
+        reserveGold = goldToken.balanceOf(_thisAddress);
+        reserveSilver = silverToken.balanceOf(_thisAddress);
 
         uint[] memory amount = new uint[](amountOut);
+
+        // Emit event for the swap
+        emit TokensSwapped(_msgSender, to, address(_tokenIn), address(_tokenOut), amountIn, amountOut);
+
         return amount;
     }
 
@@ -374,7 +396,8 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
      * @return price The amount of tokenB per 1 tokenA, scaled by 1e18.
      */
     function getPrice(address tokenA, address tokenB) external view returns (uint price) {
-        return (ERC20(tokenB).balanceOf(address(this)) * 1e18) / ERC20(tokenA).balanceOf(address(this));
+        address _thisAddress = address(this);
+        return (ERC20(tokenB).balanceOf(_thisAddress) * 1e18) / ERC20(tokenA).balanceOf(_thisAddress);
     }
 
     /**
@@ -411,5 +434,24 @@ contract SimpleSwap is ISimpleSwap, ERC20, Ownable {
     function min(uint a, uint b) internal pure returns (uint) {
         return a < b ? a : b;
     }
+
+    /**
+     * EVENTS
+     */
+
+    /**
+     * @dev Issued when liquidity is added.
+     */
+    event LiquidityAdded(address indexed sender, address indexed to, uint amountGold, uint amountSilver, uint liquidity);
+
+    /**
+     * @dev Issued when liquidity is removed.
+     */
+    event LiquidityRemoved(address indexed sender, address indexed to, uint amountGold, uint amountSilver, uint liquidity);
+
+    /**
+     * @dev Issued when a token swap occurs.
+     */
+    event TokensSwapped(address indexed sender, address indexed to, address fromToken, address toToken, uint amountIn, uint amountOut);
 }
 
